@@ -272,6 +272,7 @@ class Ship {
     this.shootCooldown = 0;
     this.speedBoost    = 0;
     this.tripleShot    = 0;
+    this.shield        = 0;
     this.dead          = false;
   }
 
@@ -281,6 +282,7 @@ class Ship {
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.speedBoost    > 0) this.speedBoost    -= dt;
     if (this.tripleShot    > 0) this.tripleShot    -= dt;
+    if (this.shield        > 0) this.shield        -= dt;
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260;  // px/s²
@@ -339,15 +341,35 @@ class Ship {
     traceBody(skin.body);
     ctx.stroke();
 
-    // Llama del propulsor (más larga con Velocidad activo)
+    // Llama del propulsor (cian y más larga con Velocidad activo)
     if (this.thrusting && Math.random() > 0.35) {
       const boosted = this.speedBoost > 0;
       ctx.beginPath();
       ctx.moveTo(-8, -4);
       ctx.lineTo(-8 - rand(6, boosted ? 26 : 14), 0);
       ctx.lineTo(-8,  4);
-      ctx.strokeStyle = skin.flame;
+      // Cian mientras Velocidad esté activo; si no, color propio de la skin
+      ctx.strokeStyle = boosted ? `rgba(${SPEED_RGB}, 0.9)` : skin.flame;
       ctx.stroke();
+    }
+
+    // Anillo de escudo: pulso sutil y parpadeo al quedar poco tiempo
+    if (this.shield > 0) {
+      const expiring = this.shield < 1.5 && Math.floor(this.shield * 8) % 2 === 0;
+      if (!expiring) {
+        const pulse = Math.sin(this.shield * 6) * 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, SHIELD_RADIUS + pulse, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${SHIELD_RGB}, 0.9)`;
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+        // Halo tenue exterior
+        ctx.beginPath();
+        ctx.arc(0, 0, SHIELD_RADIUS + pulse + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${SHIELD_RGB}, 0.25)`;
+        ctx.lineWidth   = 4;
+        ctx.stroke();
+      }
     }
 
     ctx.restore();
@@ -387,11 +409,16 @@ class Particle {
   }
 }
 
-// ── Power-ups ────────────────────────────────────────────────────────────────
+// ── Power-ups: Velocidad, Escudo y Triple ───────────────────────────────────
 const POWERUP_DROP_CHANCE = 0.12;  // probabilidad de drop al destruir asteroide
 const POWERUP_LIFETIME    = 10;    // segundos en pantalla antes de expirar
 const POWERUP_DURATION    = 5;     // duración del efecto al recogerlo
 const POWERUP_SPEED_MULT  = 2;
+const SPEED_RGB           = '0, 255, 255';  // cian, tripletas RGB para rgba()
+const SHIELD_DURATION     = 8;              // segundos máximos de escudo activo
+const SHIELD_RADIUS       = 22;             // radio del anillo alrededor de la nave
+const SHIELD_RGB          = '0, 255, 128';  // verde, tripletas RGB para rgba()
+const TRIPLE_RGB          = '255, 255, 0';  // amarillo, tripletas RGB para rgba()
 
 class PowerUp {
   constructor(x, y) {
@@ -400,6 +427,7 @@ class PowerUp {
     this.radius = 10;
     this.ttl  = POWERUP_LIFETIME;
     this.dead = false;
+    this.rgb  = WHITE_RGB; // las subclases definen su color
   }
 
   update(dt) {
@@ -407,7 +435,11 @@ class PowerUp {
     if (this.ttl <= 0) this.dead = true;
   }
 
-  apply(ship) {}    // cada subclase activa su efecto
+  // Efecto al recogerlo; lo define cada subclase
+  apply(ship) {}
+
+  // Icono dentro del rombo; lo define cada subclase
+  drawIcon() {}
 
   draw() {
     // Parpadeo cuando está por expirar
@@ -415,7 +447,7 @@ class PowerUp {
 
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.strokeStyle = this.color;
+    ctx.strokeStyle = `rgba(${this.rgb}, 1)`;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
@@ -431,13 +463,11 @@ class PowerUp {
     this.drawIcon();
     ctx.restore();
   }
-
-  drawIcon() {}    // símbolo interior propio de cada subclase
 }
 
 // Velocidad: duplica el empuje de la nave
 class SpeedPowerUp extends PowerUp {
-  color = '#0ff';
+  rgb = SPEED_RGB;
 
   apply(ship) { ship.speedBoost = POWERUP_DURATION; }
 
@@ -452,9 +482,29 @@ class SpeedPowerUp extends PowerUp {
   }
 }
 
+// Escudo: absorbe un impacto
+class ShieldPowerUp extends PowerUp {
+  rgb = SHIELD_RGB;
+
+  apply(ship) { ship.shield = SHIELD_DURATION; } // renovar si ya estaba activo
+
+  drawIcon() {
+    // Escudo heráldico
+    ctx.beginPath();
+    ctx.moveTo( 0, -7);
+    ctx.lineTo( 6, -5);
+    ctx.lineTo( 6,  2);
+    ctx.lineTo( 0,  8);
+    ctx.lineTo(-6,  2);
+    ctx.lineTo(-6, -5);
+    ctx.closePath();
+    ctx.stroke();
+  }
+}
+
 // Triple disparo: 3 balas paralelas por disparo
 class TriplePowerUp extends PowerUp {
-  color = '#ff0';
+  rgb = TRIPLE_RGB;
 
   apply(ship) { ship.tripleShot = POWERUP_DURATION; }
 
@@ -469,7 +519,7 @@ class TriplePowerUp extends PowerUp {
   }
 }
 
-const POWERUP_TYPES = [SpeedPowerUp, TriplePowerUp]; // drops equiprobables
+const POWERUP_TYPES = [SpeedPowerUp, ShieldPowerUp, TriplePowerUp]; // drops equiprobables
 
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles, powerUps;
@@ -545,6 +595,7 @@ function killShip() {
   ship.dead = true;
   ship.speedBoost = 0;
   ship.tripleShot = 0;
+  ship.shield = 0;
   lives--;
   if (lives <= 0) {
     state = 'gameover';
@@ -552,6 +603,16 @@ function killShip() {
     state     = 'dead';
     deadTimer = 2;
   }
+}
+
+// El escudo absorbe un impacto: vaporiza el asteroide (sin fragmentos, no
+// deben reaparecer encima de la nave) y se rompe en esquirlas verdes.
+function absorbShieldHit(a) {
+  a.dead = true;
+  score += a.points;
+  ship.shield = 0;
+  explode(a.x, a.y, a.size * 5, a.debrisRgb);
+  explode(ship.x, ship.y, 10, SHIELD_RGB);
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -608,23 +669,25 @@ function update(dt) {
   asteroids = asteroids.filter(a => !a.dead).concat(newAsteroids);
   bullets   = bullets.filter(b => !b.dead);
 
-  // Nave vs asteroide
+  // Nave vs asteroide: el escudo absorbe un golpe; sin él, la nave muere
   if (ship.invincible <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
-        killShip();
+        if (ship.shield > 0) absorbShieldHit(a);
+        else killShip();
         break;
       }
     }
+    asteroids = asteroids.filter(a => !a.dead);
   }
 
-  // Nave vs power-up: activa el efecto (recoger de nuevo reinicia el timer)
+  // Nave vs power-up: aplica el efecto (recoger de nuevo reinicia el timer)
   if (!ship.dead) {
     for (const p of powerUps) {
       if (!p.dead && dist(ship, p) < ship.radius + p.radius) {
         p.dead = true;
         p.apply(ship);
-        explode(p.x, p.y, 6);
+        explode(p.x, p.y, 6, p.rgb);
       }
     }
   }
@@ -663,18 +726,21 @@ function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillText(`SCORE  ${score}`, 14, 26);
 
-  let effectY = 48;
-  if (ship.speedBoost > 0) {
-    ctx.fillStyle = '#0ff';
-    ctx.fillText(`VELOCIDAD ${ship.speedBoost.toFixed(1)}s`, 14, effectY);
-    effectY += 22;
-  }
-  if (ship.tripleShot > 0) {
-    ctx.fillStyle = '#ff0';
-    ctx.fillText(`TRIPLE ${ship.tripleShot.toFixed(1)}s`, 14, effectY);
-  }
+  // Efectos activos, apilados bajo el score
+  const effects = [];
+  if (ship.speedBoost > 0)
+    effects.push([`rgba(${SPEED_RGB}, 1)`, `VELOCIDAD ${ship.speedBoost.toFixed(1)}s`]);
+  if (ship.shield > 0)
+    effects.push([`rgba(${SHIELD_RGB}, 1)`, `ESCUDO ${ship.shield.toFixed(1)}s`]);
+  if (ship.tripleShot > 0)
+    effects.push([`rgba(${TRIPLE_RGB}, 1)`, `TRIPLE ${ship.tripleShot.toFixed(1)}s`]);
+  effects.forEach(([color, text], i) => {
+    ctx.fillStyle = color;
+    ctx.fillText(text, 14, 48 + i * 22);
+  });
 
   ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff'; // volver a blanco tras los colores de los efectos
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
 
   for (let i = 0; i < lives; i++)
