@@ -1,0 +1,78 @@
+
+name: issue-triage
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  opencode:
+    if: |
+      (
+        github.event.issue.author_association == 'OWNER' ||
+        github.event.issue.author_association == 'MEMBER' ||
+        github.event.issue.author_association == 'COLLABORATOR'
+      )
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run OpenCode
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          model: opencode-go/kimi-k3
+          prompt: |
+            Acabas de llegar a un issue nuevo del repositorio. Tu tarea es darle triage
+            en español, sin modificar lo que la persona escribió.
+
+            Issue #${{ github.event.issue.number }}: "${{ github.event.issue.title }}"
+
+            Reglas:
+            1. Lee el issue con: gh issue view ${{ github.event.issue.number }}
+               (el GITHUB_TOKEN ya está autenticado).
+            2. NO reformatees ni corrijas el cuerpo original. Debes conservarlo
+               carácter por carácter, tal cual lo escribió el autor.
+            3. Añade al FINAL del cuerpo una sección nueva:
+
+               ### 🔗 Enlaces y referencias
+
+               Con 2-4 enlaces relevantes según el contenido del issue, elegidos de:
+               - README.md del repo (descripción del proyecto)
+               - AGENTS.md (notas de arquitectura y cómo ejecutar: abrir index.html o `npx serve .`)
+               - index.html (estructura de la página)
+               - game.js (lógica del juego: ship, asteroids, bullets, loop, estado)
+
+               Usa URLs absolutas:
+               https://github.com/${{ github.repository }}/blob/main/<ruta>
+               Escribe una frase breve (o bullet) explicando por qué cada enlace es
+               relevante para ESTE issue en particular. No incluyas enlaces que
+               no aporten. No comentes el error ni opines sobre el reporte:
+               solo añade contexto útil.
+            4. Actualiza el cuerpo con:
+               gh issue edit ${{ github.event.issue.number }} --body "<original + sección nueva>"
+               El texto original debe quedar en la parte superior, intacto.
+               Cuidado con el escaping: pasa el cuerpo por un archivo temporal
+               o heredoc para evitar que el shell rompa el contenido.
+            5. Etiqueta el issue:
+               - Lista las labels existentes: gh api repos/{repo}/labels (sustituye {repo} por ${{ github.repository }}).
+               - Elige con criterio 1-3 labels existentes que mejor describan el issue.
+               - Si ninguna existe encaja, crea máximo una nueva con
+                 gh api repos/{repo}/labels -f name=<nombre-en-minusculas-con-guiones> -f color=0e8a16 -f description=<texto en español>
+                 y asígnala.
+               - Asigna con: gh issue edit ${{ github.event.issue.number }} --add-label <label>
+               - Añade también la label "triaged" para marcar que el triage ya se aplicó.
+               - NO añadas labels si el issue ya las tiene.
+            6. No publiques comentarios en el issue. Solo edita cuerpo y labels.
