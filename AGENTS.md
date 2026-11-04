@@ -11,7 +11,7 @@ Single-file HTML5 Canvas Asteroids clone. No framework, no bundler, no dependenc
 
 ## Structure
 
-- `index.html` — page shell: 800x600 canvas (`#canvas`) + loads `game.js`. Inline CSS only.
+- `index.html` — page shell: 1600x1200 canvas (`#canvas`) + loads `game.js`. Inline CSS only.
 - `game.js` — all game logic in a single file (ES6+, `'use strict'`, top-level constants, classes).
 - `favicon.svg` — page icon.
 
@@ -20,7 +20,7 @@ Single-file HTML5 Canvas Asteroids clone. No framework, no bundler, no dependenc
 - Game state lives in module-level mutable state (`ship`, `bullets`, `asteroids`, `particles`, `score`, `lives`, `level`, `state`). No framework/state library.
 - Main loop is `requestAnimationFrame` (`loop(ts)`); `dt` is clamped to 0.05s max.
 - `update(dt)` / `draw()` split; state machine: `'playing' | 'dead' | 'gameover'`.
-- World is toroidal (wrap): positions wrap via modulo against `W=800`, `H=600`.
+- World is toroidal (wrap): positions wrap via modulo against `W=1600`, `H=1200`.
 - Collision: bullet vs asteroid uses `dist(b, a) < a.radius`; ship vs asteroid uses `dist(ship, a) < ship.radius + a.radius * 0.82`.
 
 ## Conventions
