@@ -204,37 +204,55 @@ class ShootingStar extends Asteroid {
 
 // ── Skins de la nave ──────────────────────────────────────────────────────────
 // Cada skin define silueta (body), color de trazo y color de llama.
-// Los cuerpos se mantienen en el entorno del radio de colisión (12px).
+// radius fija el tamaño (colisión incluida) y pointsMult multiplica los puntos.
 const SKINS = [
   {
     name:   'CLÁSICA',
     stroke: '#fff',
     flame:  'rgba(255, 130, 0, 0.85)',
     body: [[20, 0], [-12, -9], [-7, 0], [-12, 9]],    // triángulo con muesca
+    radius:      12,
+    pointsMult:   1,
   },
   {
     name:   'NEÓN',
     stroke: '#0ff',
     flame:  'rgba(0, 255, 255, 0.9)',
     body: [[22, 0], [-10, -7], [-14, 0], [-10, 7]],   // flecha estilizada
+    radius:      12,
+    pointsMult:   1,
   },
   {
     name:   'DARDO',
     stroke: '#f4f',
     flame:  'rgba(255, 80, 255, 0.85)',
     body: [[24, 0], [-12, -5], [-6, 0], [-12, 5]],    // estrecha y alargada
+    radius:      12,
+    pointsMult:   1,
   },
   {
     name:   'CAZADORA',
     stroke: '#0f0',
     flame:  'rgba(80, 255, 120, 0.85)',
     body: [[14, 0], [2, -5], [-8, -12], [-11, -7], [-6, 0], [-11, 7], [-8, 12], [2, 5]], // alas barridas
+    radius:      12,
+    pointsMult:   1,
   },
   {
     name:   'DORADA',
     stroke: '#ffd54a',
     flame:  'rgba(255, 213, 74, 0.9)',
     body: [[18, 0], [-12, -10], [-8, 0], [-12, 10]],  // a juego con la estrella fugaz
+    radius:      12,
+    pointsMult:   1,
+  },
+  {
+    name:   'GIGANTE',
+    stroke: '#b366ff',                                // morada
+    flame:  'rgba(179, 102, 255, 0.85)',
+    body: [[40, 0], [-24, -18], [-14, 0], [-24, 18]], // la CLÁSICA al doble
+    radius:      24,   // el doble que la nave original
+    pointsMult:   2,   // puntúa el doble al usarla
   },
 ];
 
@@ -260,13 +278,15 @@ function cycleSkin() {
 class Ship {
   constructor() { this.reset(); }
 
+  // El radio (tamaño y colisión) lo fija la skin activa: la GIGANTE es el doble
+  get radius() { return SKINS[skinIndex].radius; }
+
   reset() {
     this.x      = W / 2;
     this.y      = H / 2;
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
@@ -307,7 +327,7 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const NOSE = this.radius * 1.75; // punta de la silueta (21px con radio 12)
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
     if (this.tripleShot <= 0) return [new Bullet(ox, oy, this.angle)];
@@ -358,14 +378,15 @@ class Ship {
       const expiring = this.shield < 1.5 && Math.floor(this.shield * 8) % 2 === 0;
       if (!expiring) {
         const pulse = Math.sin(this.shield * 6) * 1.5;
+        const ring  = this.radius + 10 + pulse; // rodea la silueta de la skin
         ctx.beginPath();
-        ctx.arc(0, 0, SHIELD_RADIUS + pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, ring, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(${SHIELD_RGB}, 0.9)`;
         ctx.lineWidth   = 1.5;
         ctx.stroke();
         // Halo tenue exterior
         ctx.beginPath();
-        ctx.arc(0, 0, SHIELD_RADIUS + pulse + 3, 0, Math.PI * 2);
+        ctx.arc(0, 0, ring + 3, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(${SHIELD_RGB}, 0.25)`;
         ctx.lineWidth   = 4;
         ctx.stroke();
@@ -416,7 +437,6 @@ const POWERUP_DURATION    = 5;     // duración del efecto al recogerlo
 const POWERUP_SPEED_MULT  = 2;
 const SPEED_RGB           = '0, 255, 255';  // cian, tripletas RGB para rgba()
 const SHIELD_DURATION     = 8;              // segundos máximos de escudo activo
-const SHIELD_RADIUS       = 22;             // radio del anillo alrededor de la nave
 const SHIELD_RGB          = '0, 255, 128';  // verde, tripletas RGB para rgba()
 const TRIPLE_RGB          = '255, 255, 0';  // amarillo, tripletas RGB para rgba()
 
@@ -590,6 +610,11 @@ function explode(x, y, count = 8, rgb = WHITE_RGB) {
   for (let i = 0; i < count; i++) particles.push(new Particle(x, y, rgb));
 }
 
+// Suma puntos aplicando el multiplicador de la skin activa (GIGANTE puntúa ×2)
+function addScore(points) {
+  score += points * SKINS[skinIndex].pointsMult;
+}
+
 function killShip() {
   explode(ship.x, ship.y, 14);
   ship.dead = true;
@@ -609,7 +634,7 @@ function killShip() {
 // deben reaparecer encima de la nave) y se rompe en esquirlas verdes.
 function absorbShieldHit(a) {
   a.dead = true;
-  score += a.points;
+  addScore(a.points);
   ship.shield = 0;
   explode(a.x, a.y, a.size * 5, a.debrisRgb);
   explode(ship.x, ship.y, 10, SHIELD_RGB);
@@ -659,7 +684,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += a.points;
+        addScore(a.points);
         explode(a.x, a.y, a.size * 5, a.debrisRgb);
         newAsteroids.push(...a.split());
         if (Math.random() < a.dropChance) dropPowerUp(a.x, a.y);
@@ -707,12 +732,13 @@ function update(dt) {
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawLifeIcon(x, y) {
   const skin = SKINS[skinIndex];
+  const s = 6 / skin.radius; // iconos del mismo tamaño para cualquier skin
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.scale(0.5, 0.5);
+  ctx.scale(s, s);
   ctx.strokeStyle = skin.stroke;
-  ctx.lineWidth   = 2.4;   // compensa el scale para mantener ~1.2px visibles
+  ctx.lineWidth   = 1.2 / s; // compensa el scale para mantener ~1.2px visibles
   ctx.lineJoin    = 'round';
   traceBody(skin.body);
   ctx.stroke();
@@ -749,9 +775,10 @@ function drawHUD() {
   // Aviso temporal con el nombre de la skin tras cambiarla
   if (skinToast > 0) {
     const skin = SKINS[skinIndex];
+    const bonus = skin.pointsMult > 1 ? `  ·  PUNTOS ×${skin.pointsMult}` : '';
     ctx.globalAlpha = Math.min(skinToast, 1); // se desvanece en el último segundo
     ctx.fillStyle   = skin.stroke;
-    ctx.fillText(`SKIN: ${skin.name}`, W / 2, H - 18);
+    ctx.fillText(`SKIN: ${skin.name}${bonus}`, W / 2, H - 18);
     ctx.globalAlpha = 1;
   }
 }
